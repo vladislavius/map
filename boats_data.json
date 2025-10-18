@@ -3,8 +3,11 @@ from lxml import etree
 import json
 import re
 from requests.auth import HTTPBasicAuth
+import hashlib
+import os
+from datetime import datetime
+import sys
 import logging
-from typing import Dict, List, Any, Optional, Union
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -20,7 +23,7 @@ def clean_boat_name(name: str) -> str:
     
     return cleaned_name
 
-def validate_boat_names(boats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def validate_boat_names(boats: list) -> list:
     """Валидирует и корректирует названия лодок"""
     valid_boats = []
     
@@ -38,7 +41,7 @@ def validate_boat_names(boats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     
     return valid_boats
 
-def safe_int_conversion(value: Any) -> Optional[int]:
+def safe_int_conversion(value) -> int:
     """Безопасное преобразование в integer"""
     if value is None:
         return None
@@ -54,7 +57,7 @@ def safe_int_conversion(value: Any) -> Optional[int]:
     except (ValueError, TypeError):
         return None
 
-def safe_float_conversion(value: Any) -> Optional[float]:
+def safe_float_conversion(value) -> float:
     """Безопасное преобразование в float"""
     if value is None:
         return None
@@ -96,7 +99,7 @@ def extract_included_items(description: str) -> str:
     
     return included_text.strip('; ').strip()
 
-def parse_offer_element(offer_element) -> Optional[Dict[str, Any]]:
+def parse_offer_element(offer_element):
     """Парсит элемент offer и возвращает данные лодки"""
     try:
         # Базовые поля
@@ -161,19 +164,25 @@ def parse_offer_element(offer_element) -> Optional[Dict[str, Any]]:
         logger.error(f"Ошибка при парсинге элемента offer: {e}")
         return None
 
-def parse_yml_to_json(yml_url: str) -> Union[str, Dict[str, str]]:
-    """Парсит YML файл и возвращает JSON с данными лодок"""
+def get_file_hash(filename):
+    """Вычисляет хеш файла для проверки изменений"""
     try:
-        # Настройки запроса
-        auth = HTTPBasicAuth('vladike01@gmail.com', 'Vladis-000000')
+        with open(filename, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except FileNotFoundError:
+        return None
+
+def parse_yml_to_json(yml_url, username, password):
+    """Парсит YML и возвращает JSON данные"""
+    try:
+        auth = HTTPBasicAuth(username, password)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,application/json;q=0.8',
             'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
         }
         
-        logger.info(f"Загрузка YML файла: {yml_url}")
+        logger.info(f"Загружаем данные из: {yml_url}")
         response = requests.get(yml_url, auth=auth, headers=headers, timeout=60)
         response.raise_for_status()
         
@@ -185,12 +194,6 @@ def parse_yml_to_json(yml_url: str) -> Union[str, Dict[str, str]]:
         xml_content = response.content
         logger.info(f"Файл успешно загружен, размер: {len(xml_content)} байт")
         
-    except requests.exceptions.RequestException as e:
-        error_msg = f"Ошибка при загрузке YML файла: {e}"
-        logger.error(error_msg)
-        return {"error": error_msg}
-
-    try:
         # Парсим XML
         parser = etree.XMLParser(recover=True, encoding='utf-8')
         root = etree.fromstring(xml_content, parser=parser)
@@ -225,25 +228,56 @@ def parse_yml_to_json(yml_url: str) -> Union[str, Dict[str, str]]:
             
         return json.dumps(boats, indent=2, ensure_ascii=False, default=str)
         
-    except etree.XMLSyntaxError as e:
-        error_msg = f"Ошибка парсинга XML: {e}"
-        logger.error(error_msg)
-        return {"error": error_msg}
     except Exception as e:
-        error_msg = f"Неожиданная ошибка при обработке XML: {e}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+        logger.error(f"Ошибка при парсинге YML: {e}")
+        return None
 
-def save_boats_data(json_data: str, filename: str = "boats_data.json") -> bool:
-    """Сохраняет данные в JSON файл"""
-    try:
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(json_data)
-        logger.info(f"Данные успешно сохранены в {filename}")
+def main():
+    # Получаем credentials из переменных окружения
+    yml_url = os.getenv('YML_URL', 'https://onlysea.travel/tstore/yml/efae0823983b9f9e2c18a3ac98faca65.yml')
+    username = os.getenv('YML_USERNAME')
+    password = os.getenv('YML_PASSWORD')
+    
+    if not username or not password:
+        logger.error("Ошибка: YML_USERNAME или YML_PASSWORD не установлены")
+        sys.exit(1)
+    
+    output_file = "boats_data.json"
+    
+    logger.info(f"🚢 Запуск обновления данных: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Получаем текущий хеш файла
+    old_hash = get_file_hash(output_file)
+    logger.info(f"📊 Текущий хеш файла: {old_hash}")
+    
+    # Парсим новые данные
+    new_data = parse_yml_to_json(yml_url, username, password)
+    
+    if new_data is None:
+        logger.error("❌ Не удалось получить данные")
+        return False
+        
+    # Сохраняем временно новые данные
+    temp_file = "boats_data_temp.json"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        f.write(new_data)
+    
+    # Проверяем хеш новых данных
+    new_hash = get_file_hash(temp_file)
+    logger.info(f"🆕 Хеш новых данных: {new_hash}")
+    
+    # Сравниваем хеши
+    if old_hash == new_hash:
+        logger.info("✅ Изменений нет")
+        os.remove(temp_file)
+        return False
+    else:
+        logger.info("🔄 Обнаружены изменения! Обновляем файл...")
+        os.replace(temp_file, output_file)
         
         # Показываем примеры очищенных названий
         try:
-            boats_data = json.loads(json_data)
+            boats_data = json.loads(new_data)
             logger.info("\nПримеры очищенных названий лодок:")
             for i, boat in enumerate(boats_data[:10]):
                 logger.info(f"  {i+1}. {boat['Boat Name']}")
@@ -253,20 +287,7 @@ def save_boats_data(json_data: str, filename: str = "boats_data.json") -> bool:
             pass
             
         return True
-    except Exception as e:
-        logger.error(f"Ошибка при сохранении файла: {e}")
-        return False
 
 if __name__ == "__main__":
-    yml_file_url = "https://onlysea.travel/tstore/yml/efae0823983b9f9e2c18a3ac98faca65.yml"
-    
-    logger.info("Запуск парсинга лодок...")
-    result = parse_yml_to_json(yml_file_url)
-    
-    if isinstance(result, dict) and "error" in result:
-        logger.error(f"Ошибка: {result['error']}")
-    else:
-        if save_boats_data(result):
-            logger.info("Парсинг завершен успешно!")
-        else:
-            logger.error("Не удалось сохранить данные")
+    success = main()
+    sys.exit(0 if success else 1)
