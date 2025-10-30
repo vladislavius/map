@@ -1,10 +1,7 @@
 
 (function() {
     'use strict';
-        // Ваш Google Maps API ключ
-        const GOOGLE_MAPS_API_KEY = 'AIzaSyA2dvaJ7FB8j_9tWZHNoKDnQ2pAQRd-lV0';
-        const BOATS_DATA_URL = 'https://raw.githubusercontent.com/vladislavius/map/refs/heads/main/combined_boat_data_from_yml_and_csv.json';
-
+      
         // Данные островов
         const ISLAND_INFO = {
             "Phi Phi Islands": { description: "Архипелаг из 6 островов с белоснежными пляжами, изумрудными лагунами и живописными скалами." },
