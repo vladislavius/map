@@ -1,7 +1,7 @@
 
     <script>
 
-(function() {
+
     'use strict';
         // Ваш Google Maps API ключ
         const GOOGLE_MAPS_API_KEY = 'AIzaSyA2dvaJ7FB8j_9tWZHNoKDnQ2pAQRd-lV0';
@@ -2607,7 +2607,7 @@ polyline.setMap(map);
                 initializeApp();
             }
         }, 5000);
-   })();
+  
     </script>
 
 
