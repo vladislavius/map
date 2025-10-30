@@ -1,7 +1,4 @@
 
-
-    <script>
-
 (function() {
     'use strict';
         // Ваш Google Maps API ключ
@@ -2609,6 +2606,6 @@ polyline.setMap(map);
             }
         }, 5000);
    })();
-    </script>
+   
 
 
